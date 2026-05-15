@@ -21,7 +21,7 @@ def main():
 
     config = IndexingConfig(
         input_dir = Path("data/markdown"),
-        chroma_dir  = Path("data/chromadb"),
+        chroma_dir  = Path(os.getenv('CHROMA_PERSIST_DIRECTORY')),
         keywords_output_dir = Path("data/keywords"),
         collection_name = "markdown_documents",
         reset_collection = True,
@@ -31,7 +31,8 @@ def main():
             min_characters = 150,
         ),
         embedding = OpenAIEmbeddingConfig(
-            model = "text-embedding-3-small",
+            # model = "text-embedding-3-small",
+            model = os.getenv('OPENAI_EMBEDDING_MODEL'),
             batch_size = 32,
         ),
     )

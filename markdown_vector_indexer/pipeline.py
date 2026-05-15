@@ -892,10 +892,10 @@ OBSERVATIONS:
 
 @dataclass(slots=True)
 class RetrievalConfig:
-    chroma_dir: Path = Path("data/chromadb")
+    chroma_dir: Path = Path(os.getenv('CHROMA_PERSIST_DIRECTORY'))
     keywords_dir: Path = Path("data/keywords")
     collection_name: str = "markdown_documents"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = os.getenv('OPENAI_EMBEDDING_MODEL') #"text-embedding-3-small"
     top_k: int = 15
 
 

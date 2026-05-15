@@ -12,7 +12,7 @@ from typing import Iterable
 
 import chromadb
 import yaml
-from dotenv import load_dotenv
+from dotenv import load_dotenv; load_dotenv()
 from openai import OpenAI
 
 LOGGER = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ class ChunkingConfig:
 
 @dataclass(slots=True)
 class OpenAIEmbeddingConfig:
-    model: str = "text-embedding-3-small"
+    model: str = os.getenv('OPENAI_EMBEDDING_MODEL') #"text-embedding-3-small"
     batch_size: int = 32
 
 
@@ -733,7 +733,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chroma-dir",
         type=Path,
-        default=Path("data/chromadb"),
+        default=Path(os.getenv('CHROMA_PERSIST_DIRECTORY')),
         help="Diretorio de persistencia do banco vetorial ChromaDB.",
     )
     parser.add_argument(
@@ -749,7 +749,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--embedding-model",
-        default="text-embedding-3-small",
+        default=os.getenv('OPENAI_EMBEDDING_MODEL'), #"text-embedding-3-small",
         help="Modelo de embedding da OpenAI.",
     )
     parser.add_argument(
@@ -803,8 +803,6 @@ def main(argv: Iterable[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(levelname)s: %(message)s",
     )
-
-    load_dotenv()
 
     config = IndexingConfig(
         input_dir=args.input_dir,

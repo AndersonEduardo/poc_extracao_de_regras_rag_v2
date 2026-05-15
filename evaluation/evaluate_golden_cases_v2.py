@@ -26,24 +26,24 @@ RAGAS_METRICS = [answer_correctness, context_recall, faithfulness]
 LLM_JUDGE = 'gpt-5.1'
 API_TIMEOUT_SECONDS = 120
 API_CONCURRENCY = int(os.getenv("API_CONCURRENCY", "1"))
-JUDGE_SYSTEM_PROMPT = """
-You are a careful clinical guideline evaluation judge.
-Your job is to compare a system output against a reference answer for a medical decision-support golden case.
+# JUDGE_SYSTEM_PROMPT = """
+# You are a careful clinical guideline evaluation judge.
+# Your job is to compare a system output against a reference answer for a medical decision-support golden case.
 
-Return only JSON with:
-{{
-  "verdict": "correct" | "partial" | "incorrect",
-  "score": 1.0 | 0.5 | 0.0,
-  "rationale": "short explanation"
-}}
+# Return only JSON with:
+# {{
+#   "verdict": "correct" | "partial" | "incorrect",
+#   "score": 1.0 | 0.5 | 0.0,
+#   "rationale": "short explanation"
+# }}
 
-Judging rules:
-- Mark correct when the system output contains all mandatory components from the reference and does not contradict restrictions.
-- When the reference allows alternatives with "ou" / "or", any valid alternative is sufficient.
-- Mark partial when the output is clinically related but incomplete or only partially overlaping with reference data.
-- Mark incorrect when it omits an essential recommendation, recommends a prohibited item, contradicts the reference, or is unrelated.
-- Judge only against the supplied reference answer, not against outside clinical knowledge.
-""".strip()
+# Judging rules:
+# - Mark correct when the system output contains all mandatory components from the reference and does not contradict restrictions.
+# - When the reference allows alternatives with "ou" / "or", any valid alternative is sufficient.
+# - Mark partial when the output is clinically related but incomplete or only partially overlaping with reference data.
+# - Mark incorrect when it omits an essential recommendation, recommends a prohibited item, contradicts the reference, or is unrelated.
+# - Judge only against the supplied reference answer, not against outside clinical knowledge.
+# """.strip()
 JUDGE_QUERY_PROMPT = '''
 # EXPERIMENT OUTPUT:
 {experiment_output}

@@ -31,3 +31,11 @@ Formato do output:
 
 Resposta:
 """.strip()
+
+QUERY_RETRIEVAL_MEDICATION_PRESCRIPTION = '''
+1. Seção de **Tratamento**, para realizar prescrição de medicamentos.(tratamento framacológico)
+2. Seção Codificação Diagnóstica (para o conjunto de CID-10 que definem a doença principal).
+3. Palavras-chave: tratamento farmacológico; remédios; medicamentos.
+4. Dados do paciente:
+{parsed_user_query}
+'''

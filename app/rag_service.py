@@ -1,4 +1,6 @@
 import os
+import json
+
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -57,13 +59,33 @@ class RAGService:
         )
 
 
+    def user_query_parser_for_retrieval(self, query:str):
+
+        query_dict = json.loads(query.replace('{{', '{').replace('}}','}'))
+
+        query_list = list(query_dict.items())
+
+        query_parsed_raw = '\n'.join([' - ' + str(v[0]) + ': ' + str(v[1]) for v in query_list])
+
+        query_parsed = query_parsed_raw.replace('}', '}}').replace('{','{{')
+
+        return query_parsed
+
+
     def retrieve(self, query: str) -> list[Document]:
         """
         Recupera os documentos mais relevantes do ChromaDB.
         """
 
+        # TODO: Aqui, implementar um roteador de query a parrtir do parâmetro do usuário "clinical-focus"
+        # Exemplo: para medicamentos: {..., "clinical-focus":"medication-prescription", ...}, etc.
+
+        parsed_user_query = self.user_query_parser_for_retrieval(query)
+
+        query_expanded = QUERY_RETRIEVAL_MEDICATION_PRESCRIPTION.format(parsed_user_query=parsed_user_query)
+
         return self.vector_store.similarity_search(
-            query = query,
+            query = query_expanded,
             k = self.top_k,
         )
 
