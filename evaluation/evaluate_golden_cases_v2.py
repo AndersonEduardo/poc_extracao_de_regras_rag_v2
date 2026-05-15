@@ -53,8 +53,8 @@ def solve(query:dict):
 
     user_query = json.dumps(query)
 
-    query = {'query': "Recomendação de medicamentos para paciente com estratificação de risco muito alta."}
-    # query = {'query': str(user_query).replace('{', '{{').replace('}', '}}')}
+    # query = {'query': "Recomendação de medicamentos para paciente com estratificação de risco muito alta."}
+    query = {'query': str(user_query).replace('{', '{{').replace('}', '}}')}
     # query = {'query': f"{str(query)}"}
 
     # print()
