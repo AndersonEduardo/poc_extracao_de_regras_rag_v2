@@ -143,7 +143,7 @@ class RAGService:
             sources.append(
                 {
                     "rank": idx,
-                    "content_preview": doc.page_content, #[:500],
+                    "content_preview": doc.page_content, #[:500], # manter texto completo do chunk.
                     "metadata": doc.metadata,
                 }
             )

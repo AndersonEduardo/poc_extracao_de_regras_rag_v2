@@ -10,3 +10,5 @@ langchain-chroma
 chromadb
 
 python-dotenv
+
+ragas

@@ -1,18 +1,27 @@
-import time
-import requests
 import json
+import asyncio
+import os
+
+import httpx
 import pandas as pd
+
 from dotenv import load_dotenv; load_dotenv()
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from ragas import EvaluationDataset, aevaluate
+from ragas.metrics import faithfulness, answer_correctness, context_recall
+from ragas.llms import LangchainLLMWrapper
 
 
 URL = 'http://localhost:8000/rag/answer'
 HEADER = {'Content-Type': 'application/json'}
-REFERENCE_DATASET = 'data/golden_dataset/golden_cases.csv'
+REFERENCE_DATASET = 'data/golden_dataset/golden_cases_ragas.csv'
 RESULTS_OUTPUT_PATH = 'evaluation/results/evaluation_results.csv'
+RAGAS_METRICS = [answer_correctness, context_recall, faithfulness]
 LLM_JUDGE = 'gpt-5.1'
+API_TIMEOUT_SECONDS = 120
+API_CONCURRENCY = int(os.getenv("API_CONCURRENCY", "1"))
 JUDGE_SYSTEM_PROMPT = """
 You are a careful clinical guideline evaluation judge.
 Your job is to compare a system output against a reference answer for a medical decision-support golden case.
@@ -45,62 +54,28 @@ class JudgeDataModel(BaseModel):
     rationale:str
 
 
-def solve(query:dict):
-
-    if not isinstance(query, dict):
-    
-        raise TypeError(f'`query` must be a python dict (found {type(query)})')
-
-    user_query = json.dumps(query)
-
-    # query = {'query': "Recomendação de medicamentos para paciente com estratificação de risco muito alta."}
-    query = {'query': str(user_query).replace('{', '{{').replace('}', '}}')}
-    # query = {'query': f"{str(query)}"}
-
-    # print()
-    # print('--> DENTRO')
-    # print('- type(query) =', type(query))
-    # print()
-    # print('- query =', query)
-    # print()
-
-    # r = requests.post(url=URL, headers=HEADER, data=json.dumps(query))
-    # r = requests.post(url=URL, data=json.dumps(query))
-    r = requests.post(url=URL, json=query)
-
-    if r.status_code != 200:
-
-        raise Exception(f'API status code failure: status code = {r.status_code}')
-    
-    r_json = r.json()
-
-    output = r_json['answer']['results']
-
-    return output
-
-
 def load_reference_dateset():
 
     return pd.read_csv(REFERENCE_DATASET)
 
 
-def llm_judge(reference_output:str, experiment_output:str):
+# def llm_judge(reference_output:str, experiment_output:str):
 
-    llm = ChatOpenAI(model=LLM_JUDGE, temperature=0)
+#     llm = ChatOpenAI(model=LLM_JUDGE, temperature=0)
 
-    llm_structured = llm.with_structured_output(JudgeDataModel)
+#     llm_structured = llm.with_structured_output(JudgeDataModel)
 
-    prompt = ChatPromptTemplate(
-        [
-            ('system', JUDGE_SYSTEM_PROMPT), 
-            ('user', JUDGE_QUERY_PROMPT.format(experiment_output=experiment_output, reference_output=reference_output))
-        ]
-    )
+#     prompt = ChatPromptTemplate(
+#         [
+#             ('system', JUDGE_SYSTEM_PROMPT), 
+#             ('user', JUDGE_QUERY_PROMPT.format(experiment_output=experiment_output, reference_output=reference_output))
+#         ]
+#     )
 
-    chain_judge = prompt | llm_structured
-    # chain_judge = prompt | llm
+#     chain_judge = prompt | llm_structured
+#     # chain_judge = prompt | llm
     
-    return chain_judge.invoke({'reference_output':reference_output, 'experiment_output':experiment_output})
+#     return chain_judge.invoke({'reference_output':reference_output, 'experiment_output':experiment_output})
 
 
 def get_table(output:list):
@@ -108,65 +83,138 @@ def get_table(output:list):
     return pd.DataFrame([{'verdict':x.verdict, 'core':x.score, 'rationale':x.rationale} for x in output])
 
 
-def main():
+def format_response_for_ragas(results: list[dict]) -> str:
 
-    reference_dataset = load_reference_dateset()
+    if not results:
 
-    output = list()
+        return ""
 
-    for i, row in reference_dataset.iterrows():
+    parts = []
 
-        print(f'[STATUS] Evaluating reference data instance:\n\t-Index: {i}\n\t-Contents: {row}\n')
+    for item in results:
 
-        reference_input = json.loads(row['parametros_clinicos'])
-        reference_output = row['resposta_correta']
+        suggested_items = item.get("suggested-items", [])
+        rationale = item.get("clinical-rationale", "")
 
-        # print()
-        # print('##'*10)
-        # print(f'---> reference_input (type = {type(reference_input)}):\n', reference_input)
-        # print('##'*10)
-        # print(f'---> reference_output (type = {type(reference_output)}):\n', reference_output)
-        # print('##'*10)
-        # print()
+        if suggested_items:
 
-        experiment_output_raw = solve(query=reference_input)
-        experiment_output = json.dumps(experiment_output_raw)
+            parts.append("Itens sugeridos: " + "; ".join(suggested_items))
 
-        reference_output = reference_output.replace('{', '{{').replace('}', '}}')
-        experiment_output = experiment_output.replace('{', '{{').replace('}', '}}')
+        if rationale:
+
+            parts.append("Justificativa clínica: " + rationale)
+
+    return "\n".join(parts)
 
 
-        # print()
-        # print('##'*10)
-        # print(f'---> reference_input (type = {type(reference_input)}):\n', reference_input)
-        # print('##'*10)
-        # print(f'---> reference_output (type = {type(experiment_output)}):\n', experiment_output)
-        # print('##'*10)
-        # print()
+async def solve(query:dict, client:httpx.AsyncClient):
 
+    if not isinstance(query, dict):
+    
+        raise TypeError(f'`query` must be a python dict (found {type(query)})')
 
-        judge_output = llm_judge(reference_output=reference_output, experiment_output=experiment_output)
+    user_query = json.dumps(query)
 
-        output_i = {
-            'id': int(i),
-            'query': row['parametros_clinicos'],
-            'reference_output': reference_output,
-            'experiment_output': experiment_output,
-            'verdict': judge_output.verdict, 
-            'score': float(judge_output.score),
-            'rationale':judge_output.rationale
-        }
+    query = {'query': str(user_query).replace('{', '{{').replace('}', '}}')}
 
-        # output.append(judge_output)
-        output.append(output_i)
+    r = await client.post(url=URL, json=query)
+    r.raise_for_status()
+    
+    r_json = r.json()
 
-        print(f'[STATUS] Reference data instance {i} completed.')
-
-        # break
-
-        time.sleep(0.3)
+    output = {
+        'response': format_response_for_ragas(r_json['answer']['results']),
+        'retrieved_contexts': [x['content_preview'] for x in r_json['sources']]
+    }
 
     return output
+
+
+async def solve_dataframe_row(
+    index:int,
+    row:pd.Series,
+    client:httpx.AsyncClient,
+    semaphore:asyncio.Semaphore
+) -> dict:
+
+    async with semaphore:
+
+        print(f'[STATUS] Evaluating reference data instance:\n\t-Index: {index}\n\t-Contents: {row}\n')
+
+        reference_input = json.loads(row['user_input'])
+        reference_output = row['reference']
+
+        try:
+
+            experiment_output = await solve(query=reference_input, client=client)
+
+        except httpx.HTTPStatusError as exc:
+
+            response_text = exc.response.text[:1000]
+            raise RuntimeError(
+                f"API failure while evaluating reference data instance {index}: "
+                f"status_code={exc.response.status_code}, response={response_text}"
+            ) from exc
+
+        output_i = {
+            'id': int(index),
+            'user_input': row['user_input'],
+            'reference': reference_output,
+            'response': experiment_output['response'],
+            'retrieved_contexts': experiment_output['retrieved_contexts']
+        }
+
+        print(f'[STATUS] Reference data instance {index} completed.')
+
+        return output_i
+
+
+async def solve_dataframe(df:pd.DataFrame):
+
+    if not isinstance(df, pd.DataFrame):
+
+        raise TypeError('`df` must be a pandas dataframe.')
+
+    semaphore = asyncio.Semaphore(API_CONCURRENCY)
+
+    async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
+
+        tasks = [
+            solve_dataframe_row(
+                index=i,
+                row=row,
+                client=client,
+                semaphore=semaphore
+            )
+            for i, row in df.iterrows()
+        ]
+
+        output = await asyncio.gather(*tasks)
+
+    return pd.DataFrame(output)
+
+
+async def main():
+
+    llm = ChatOpenAI(model=LLM_JUDGE, temperature=0)
+
+    llm_judge = LangchainLLMWrapper(llm)
+    
+    reference_dataset = load_reference_dateset()
+
+    experiment_output = await solve_dataframe(reference_dataset)
+
+    reference_dataset_dict = experiment_output.to_dict(orient="records")
+    
+    reference_dataset_ragas = EvaluationDataset.from_list(reference_dataset_dict)
+
+    output_ragas = await aevaluate(
+        dataset = reference_dataset_ragas,
+        metrics = RAGAS_METRICS,
+        llm = llm_judge
+    )
+
+    return output_ragas
 
 
 if __name__ == '__main__':
@@ -176,18 +224,22 @@ if __name__ == '__main__':
     print()
 
     print('[STATUS] Running')
-    results = main()
+    # results = main()
+    results = asyncio.run(main())
     print('[STATUS] Evaluation completed.')
 
     print('-- OUTPUT --')
-    # results = pd.DataFrame(results)
-    # results_table = get_table(results)
-    results_table = pd.DataFrame(results)
-    print(results_table)
-    print('\nOutput summary:\n', results_table['verdict'].value_counts(), '\n')
-    print('\nMean score:\n', results_table['score'].mean(), '\n')
-    results_table.to_csv(RESULTS_OUTPUT_PATH, index=False)
-    # print(results)
+
+    print(results)
+
+    # # results = pd.DataFrame(results)
+    # # results_table = get_table(results)
+    # results_table = pd.DataFrame(results)
+    # print(results_table)
+    # print('\nOutput summary:\n', results_table['verdict'].value_counts(), '\n')
+    # print('\nMean score:\n', results_table['score'].mean(), '\n')
+    # results_table.to_csv(RESULTS_OUTPUT_PATH, index=False)
+    # # print(results)
     print('-------------')
     print()
     print('##### Evaluation Finished #####')
