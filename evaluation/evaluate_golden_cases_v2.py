@@ -17,8 +17,12 @@ from ragas.llms import LangchainLLMWrapper
 URL = 'http://localhost:8000/rag/answer'
 HEADER = {'Content-Type': 'application/json'}
 REFERENCE_DATASET = 'data/golden_dataset/golden_cases_ragas.csv'
-RESULTS_OUTPUT_PATH = 'evaluation/results/evaluation_results.csv'
+RESULTS_OUTPUT_PATH = 'evaluation/results/evaluation_results.xlsx'
 RAGAS_METRICS = [answer_correctness, context_recall, faithfulness]
+# Observações:
+# answer_correctness: avalia a exatidão da response em comparação com a reference dos especialistas.
+# context_recall: analisa se o retrieved_contexts (experimental) contém as informações necessárias para chegar à resposta descrita na reference. No ambiente médico, ela ajuda a identificar se o buscador de vetores omitiu alguma contraindicação ou sintoma vital que os especialistas incluíram no gabarito.
+# faithfulness: checa se cada afirmação médica presente na response pode ser diretamente inferida a partir do retrieved_contexts. Se a IA gerar uma conduta correta com base em conhecimento prévio interno dela, mas que não estava nos documentos que o sistema recuperou, a nota cai. Isso impede o perigoso fenômeno de "alucinação factual não rastreável".
 LLM_JUDGE = 'gpt-5.1'
 API_TIMEOUT_SECONDS = 120
 API_CONCURRENCY = int(os.getenv("API_CONCURRENCY", "1"))
@@ -159,6 +163,7 @@ async def solve_dataframe_row(
         output_i = {
             'id': int(index),
             'user_input': row['user_input'],
+            'ratianale': row['rationale'],
             'reference': reference_output,
             'response': experiment_output['response'],
             'retrieved_contexts': experiment_output['retrieved_contexts']
@@ -214,7 +219,7 @@ async def main():
         llm = llm_judge
     )
 
-    return output_ragas
+    return {'summary':output_ragas, 'dataframe':experiment_output}
 
 
 if __name__ == '__main__':
@@ -230,16 +235,13 @@ if __name__ == '__main__':
 
     print('-- OUTPUT --')
 
-    print(results)
+    print('- Ragas Summary:')
+    print(results['summary'])
+    print('\n- Output table:')
+    print(results['dataframe'])
 
-    # # results = pd.DataFrame(results)
-    # # results_table = get_table(results)
-    # results_table = pd.DataFrame(results)
-    # print(results_table)
-    # print('\nOutput summary:\n', results_table['verdict'].value_counts(), '\n')
-    # print('\nMean score:\n', results_table['score'].mean(), '\n')
-    # results_table.to_csv(RESULTS_OUTPUT_PATH, index=False)
-    # # print(results)
+    results['dataframe'].to_excel(RESULTS_OUTPUT_PATH, index=False)
+
     print('-------------')
     print()
     print('##### Evaluation Finished #####')
